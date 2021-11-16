@@ -15,9 +15,11 @@ import (
 )
 
 var clean bool
+var merge string
 
 func main() {
 	flag.BoolVar(&clean, "clean", false, "Drop tables before recreating them")
+	flag.StringVar(&merge, "merge", "", "Attempt to merge all imported data into this table")
 	flag.Parse()
 	sqlFiles := []string{}
 	for _, f := range flag.Args() {
@@ -25,7 +27,7 @@ func main() {
 		if err != nil {
 			log.Printf("Failed to handle %s: %s", f, err)
 		} else {
-			sqlFiles = append(sqlFiles, strings.TrimSuffix(f, ".csv") + ".sql")
+			sqlFiles = append(sqlFiles, strings.TrimSuffix(f, ".csv")+".sql")
 		}
 	}
 	all, err := os.Create("alltables.sql")
@@ -36,6 +38,17 @@ func main() {
 	for _, file := range sqlFiles {
 		_, _ = fmt.Fprintf(all, "\\i '%s'\n", file)
 	}
+	if merge != "" {
+		if clean {
+			_, _ = fmt.Fprintf(all, "drop table if exists %s;\n", merge)
+		}
+		selects := make([]string, len(sqlFiles))
+		for i, t := range sqlFiles {
+			selects[i] = fmt.Sprintf("select * from %s\n", slug(strings.TrimSuffix(t, ".sql")))
+		}
+		_, _ = fmt.Fprintf(all, "create table %s as\n%s;", merge, strings.Join(selects, "union\n"))
+	}
+
 	_ = all.Close()
 }
 
